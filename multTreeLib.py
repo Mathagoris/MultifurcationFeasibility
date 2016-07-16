@@ -8,7 +8,6 @@
 # that multifurcating trees can be binarized while maintaining (in)feasibility
 from Bio import Phylo
 import networkx as nx
-import re
 
 
 class Tree:
@@ -25,19 +24,24 @@ class Tree:
     def is_multifurcating(self):
         return not self.tree.is_bifurcating()
 
-    def draw(self):
+    def draw_tree(self):
         Phylo.draw_ascii(self.tree)
+
+    def draw_LEG(self):
+        # nx.draw(self.LEG)
+        print self.LEG.nodes()
 
     def is_feasible(self):
         for cc in nx.connected_components(self.LEG):
             for i in xrange(0, len(cc)):
                 for j in xrange(i+1, len(cc)):
-                    if cc[i].split('_')[0] == cc[j].split('_')[0]:
+                    if list(cc)[i].split('_')[0] == list(cc)[j].split('_')[0]:
                         return False
         return True
 
     def generate_LEG(self):
         LEG = nx.Graph()
+        LEG.add_nodes_from([terminal.name for terminal in self.tree.get_terminals()])
         group_paths = {}
         for group in self.group_terminals():
             group_locus = self.loci(group[0])
@@ -57,22 +61,45 @@ class Tree:
         return LEG
 
     def group_terminals(self):
+        terminals = sorted(self.tree.get_terminals(), key=lambda terminal: terminal.name)
+        groups = []
+        while terminals != []:
+            first = terminals.pop(0)
+            group = [first]
+            to_remove = []
+            for terminal in terminals:
+                if first.name in terminal.name:
+                    group.append(terminal)
+                    to_remove.append(terminal)
+            for terminal in to_remove:
+                terminals.remove(terminal)
+            groups.append(group)
+        return groups
+
 
     def paths_are_edge_disjoint(self, paths_1, paths_2):
         for path_1 in paths_1:
             for path_2 in paths_2:
-                if len(path_1.instersect(path_2)) > 2:
+                if len(path_1.intersection(path_2)) > 2:
                     return False
         return True
 
     def get_terminals_w_path(self, from_list):
-        to_list = list(set(self.tree.get_terminals) - set(from_list))
+        to_list = list(set(self.tree.get_terminals()) - set(from_list))
         has_path = set()
         for from_terminal in from_list:
             for to_terminal in to_list:
                 if self.loci(from_terminal) == self.loci(to_terminal):
-                    has_path.add(self.loci(from_terminal))
+                    has_path.add(from_terminal)
         return has_path
+
+    def prune(self, clade):
+        if clade.is_terminal():
+            self.tree.prune(clade)
+        else:
+            for child in clade:
+                self.prune(child)
+            self.tree.prune(clade)
 
     def expand(self, partition, clade):
         # Biopython's tree class does not let you replace a clade with another so it is
@@ -81,11 +108,12 @@ class Tree:
         while not clade.is_terminal():
             for terminal in clade.get_terminals():
                 self.tree.prune(terminal)
+            clade = self.tree.get_terminals()
         self.connect(partition, clade)
 
     def connect(self, partition, clade):
         if len(partition) == 1:
-            self.sub_expand(partition[0])
+            self.sub_expand(partition[0], clade)
         else:
             clade.split()
             self.sub_expand(partition[0], clade[0])
@@ -110,6 +138,9 @@ class Tree:
 
     def binarize(self):
         self.binarize_rec(self.tree.root)
+        # Paths may have been generated within connected components of LEG
+        # when binarizing so it is necessary to regenerate the LEG
+        self.LEG = self.generate_LEG()
 
     def binarize_rec(self, clade):
         if clade.is_terminal():
@@ -130,7 +161,11 @@ class Tree:
                 else:
                     # Arbitrarily choose the first loci on the parent edge because all the loci with
                     # paths on parent edge are in the same connected component regardless
-                    cc = tuple(nx.node_connected_component(self.LEG, self.loci(paths_on_parent_edge[0])))
+                    cc = nx.node_connected_component(self.LEG, self.loci(paths_on_parent_edge.pop()))
+                    if len(cc) == 1:
+                        cc = cc.pop()
+                    else:
+                        cc = tuple(cc)
                     if cc in partition:
                         partition[cc].append(child)
                     else:
