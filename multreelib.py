@@ -10,6 +10,19 @@ from rasmus import treelib
 import networkx as nx
 import collections
 
+def parse_gene(gene, mapping='sli_'):
+    if mapping == 'sli':
+        species, locus, ind = gene.split('-')  # leaf format = "species-locus-ind"
+    elif mapping == 'sil':
+        species, ind, locus = gene.split('-')  # leaf format = "species-ind-locus"
+    elif mapping == 'sli_':
+        species, locus, ind = gene.split('_')  # leaf format = "species_locus_ind"
+    elif mapping == 'sil_':
+        species, ind, locus = gene.split('_')  # leaf format = "species_ind_locus"
+    else:
+        raise Exception("mapping not supported: %s" % mapping)
+
+    return (species, locus, ind)
 
 class Tree(object):
     def __init__(self, tree_file, mapping='sli_'):
@@ -23,7 +36,8 @@ class Tree(object):
         return not treelib.is_binary(self.tree)
 
     def draw_tree(self):
-        treelib.draw_tree(self.tree)
+        # treelib.draw_tree(self.tree)
+        print self.tree.nodes
 
     def draw_LEG(self):
         # nx.draw(self.LEG)
@@ -44,18 +58,9 @@ class Tree(object):
         # collect leaves based on species and locus
         groupings = collections.defaultdict(list)
         for leaf in self.tree.leaves():
-            if self.mapping == 'sli':
-                species, locus, ind = leaf.name.split('-')  # leaf format = "species-locus-ind"
-            elif self.mapping == 'sil':
-                species, ind, locus = leaf.name.split('-')  # leaf format = "species-ind-locus"
-            elif self.mapping == 'sli_':
-                species, locus, ind = leaf.name.split('_')  # leaf format = "species_locus_ind"
-            elif self.mapping == 'sil_':
-                species, ind, locus = leaf.name.split('_')  # leaf format = "species_ind_locus"
-            else:
-                raise Exception("mapping not supported: %s" % self.mapping)
+            gene = parse_gene(leaf.name)
 
-            label = (species, locus)
+            label = gene[:2]
             groupings[label].append(leaf)
 
         return groupings
@@ -146,4 +151,83 @@ class Tree(object):
                 if len(loci) >= 2:
                     node.data["reconcilable"] = False
 
+    def get_nodes_w_path(self, from_list):
+        to_list = list(set(self.tree.leaves()) - set(from_list))
+        has_path = set()
+        for from_terminal in from_list:
+            for to_terminal in to_list:
+                if parse_gene(from_terminal, self.mapping)[:2] == parse_gene(to_terminal, self.mapping)[:2]:
+                    has_path.add(from_terminal)
+        return has_path
+
+    def expand(self, partition, node):
+        connecting_tree = treelib.Tree()
+        connecting_tree.make_root(name=node.name)
+        self.connect(partition, connecting_tree, connecting_tree.root)
+        self.tree.replace_tree(node, connecting_tree)
+
+    def connect(self, partition, connecting_tree, node):
+        if len(partition) == 1:
+            self.sub_expand(partition[0], connecting_tree, node)
+        else:
+            left = treelib.TreeNode()
+            right = treelib.TreeNode(name=self.tree.new_name())
+            connecting_tree.add_child(node, left)
+            connecting_tree.add_child(node, right)
+            self.sub_expand(partition[0], connecting_tree, left)
+            self.connect(partition[1:], connecting_tree, right)
+
+    def sub_expand(self, group, connecting_tree, node):
+        if len(group) == 1:
+            connecting_tree.replace_tree(node, group[0])
+        else:
+            connecting_tree.add_tree(node, group[0])
+            right = treelib.TreeNode(name=self.tree.new_name())
+            connecting_tree.add_child(node, right)
+            self.sub_expand(group[1:], connecting_tree, right)
+
     def binarize(self):
+        self.binarize_rec(self.tree.root)
+        # Paths may have been generated within connected components of LEG
+        # when binarizing so it is necessary to regenerate the LEG
+        self.leg = self.create_leg()
+
+    def binarize_rec(self, node):
+        if node.is_leaf():
+            return
+        if len(node.children) > 2:
+            partition = collections.defaultdict(list)
+            for child in node:
+                paths_on_parent_edge = []
+                if child.is_leaf():
+                    paths_on_parent_edge = self.get_nodes_w_path([child])
+                else:
+                    paths_on_parent_edge = self.get_nodes_w_path(child.get_terminals())
+                if len(paths_on_parent_edge) == 0:
+                    partition['no_path'].append(treelib.subtree(self.tree, child))
+                else:
+                    # Arbitrarily choose the first loci on the parent edge because all the loci with
+                    # paths on parent edge are in the same connected component regardless
+                    cc = nx.node_connected_component(self.leg,
+                                                     parse_gene(paths_on_parent_edge.pop().name)[:2])
+                    if len(cc) == 1:
+                        cc = cc.pop()
+                    else:
+                        cc = tuple(cc)
+                    partition[cc].append(treelib.subtree(self.tree, child))
+            no_path = []
+            if 'no_path' in partition:
+                no_path = partition['no_path']
+                del partition['no_path']
+            if len(partition) == 0:
+                self.expand([no_path], node)
+            else:
+                # arbitrarily place children with no path in any partition
+                partition[partition.keys()[0]] + no_path
+                partition_list = []
+                for key in partition.keys():
+                    partition_list.append(partition[key])
+                self.expand(partition_list, node)
+
+        for child in node:
+            self.binarize_rec(child)

@@ -1,5 +1,5 @@
 from sys import argv
-from multTreeLib import Tree
+from multreelib import Tree
 
 
 def main(tree_file):
@@ -24,7 +24,7 @@ def main(tree_file):
             else:
                 print "Something went wrong!"
                 print "The tree is now " + "infeasible" if initial_feas else "feasible"
-            tree.draw()
+            tree.draw_tree()
             tree.draw_LEG()
     else:
         print "Tree does not need to be binarized"
