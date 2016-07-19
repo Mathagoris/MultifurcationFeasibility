@@ -3,9 +3,13 @@
 # Created by Matt Dohlen
 # June 2016
 
-# This class is a wrapper for Prof Wu's tree implementation. I chose to implement
-# it this way in order to hide the implementation details and better illustrate
-# that multifurcating trees can be binarized while maintaining (in)feasibility
+# This class is a wrapper for the Rasmus CompBio tree implementation located at
+# https://github.com/mdrasmus/compbio. I chose to implement it this way in order
+# to hide the implementation details and better illustrate that multifurcating
+# trees can be binarized while maintaining (in)feasibility
+
+# A lot of the code for creating the LEG was repurposed for this class from Prof
+# Wu's plctlib. get_conflicts and annotate have not yet been tested
 from rasmus import treelib
 import networkx as nx
 import collections
@@ -36,12 +40,12 @@ class Tree(object):
         return not treelib.is_binary(self.tree)
 
     def draw_tree(self):
-        # treelib.draw_tree(self.tree)
-        print self.tree.nodes
+        treelib.draw_tree(self.tree)
+        # print self.tree.nodes
 
-    def draw_LEG(self):
+    def draw_leg(self):
         # nx.draw(self.LEG)
-        print self.leg.nodes()
+        print "Connected Components of LEG:\n" + str(list(nx.connected_components(self.leg)))
 
     def is_feasible(self):
         for cc in nx.connected_components(self.leg):
@@ -58,7 +62,7 @@ class Tree(object):
         # collect leaves based on species and locus
         groupings = collections.defaultdict(list)
         for leaf in self.tree.leaves():
-            gene = parse_gene(leaf.name)
+            gene = parse_gene(leaf.name, self.mapping)
 
             label = gene[:2]
             groupings[label].append(leaf)
@@ -151,13 +155,14 @@ class Tree(object):
                 if len(loci) >= 2:
                     node.data["reconcilable"] = False
 
-    def get_nodes_w_path(self, from_list):
-        to_list = list(set(self.tree.leaves()) - set(from_list))
+    def get_paths_out(self, from_leaves):
+        to_leaves = list(set(self.tree.leaves()) - set(from_leaves))
         has_path = set()
-        for from_terminal in from_list:
-            for to_terminal in to_list:
-                if parse_gene(from_terminal, self.mapping)[:2] == parse_gene(to_terminal, self.mapping)[:2]:
-                    has_path.add(from_terminal)
+        for from_leaf in from_leaves:
+            for to_leaf in to_leaves:
+                if parse_gene(from_leaf.name, self.mapping)[:2] == \
+                                parse_gene(to_leaf.name, self.mapping)[:2]:
+                    has_path.add(from_leaf)
         return has_path
 
     def expand(self, partition, node):
@@ -170,7 +175,7 @@ class Tree(object):
         if len(partition) == 1:
             self.sub_expand(partition[0], connecting_tree, node)
         else:
-            left = treelib.TreeNode()
+            left = treelib.TreeNode(name=self.tree.new_name())
             right = treelib.TreeNode(name=self.tree.new_name())
             connecting_tree.add_child(node, left)
             connecting_tree.add_child(node, right)
@@ -183,13 +188,16 @@ class Tree(object):
         else:
             connecting_tree.add_tree(node, group[0])
             right = treelib.TreeNode(name=self.tree.new_name())
-            connecting_tree.add_child(node, right)
+            right = connecting_tree.add_child(node, right)
             self.sub_expand(group[1:], connecting_tree, right)
 
     def binarize(self):
         self.binarize_rec(self.tree.root)
         # Paths may have been generated within connected components of LEG
         # when binarizing so it is necessary to regenerate the LEG
+        # NOTE: For some reason if the tree is not copied here the create_plct
+        # method fails when trying to add labels to the data dictionary
+        self.tree = self.tree.copy()
         self.leg = self.create_leg()
 
     def binarize_rec(self, node):
@@ -199,17 +207,18 @@ class Tree(object):
             partition = collections.defaultdict(list)
             for child in node:
                 paths_on_parent_edge = []
+                # May be possible to use node "labels" here from creating PLCT
                 if child.is_leaf():
-                    paths_on_parent_edge = self.get_nodes_w_path([child])
+                    paths_on_parent_edge = self.get_paths_out([child])
                 else:
-                    paths_on_parent_edge = self.get_nodes_w_path(child.get_terminals())
+                    paths_on_parent_edge = self.get_paths_out(child.leaves())
                 if len(paths_on_parent_edge) == 0:
                     partition['no_path'].append(treelib.subtree(self.tree, child))
                 else:
                     # Arbitrarily choose the first loci on the parent edge because all the loci with
                     # paths on parent edge are in the same connected component regardless
                     cc = nx.node_connected_component(self.leg,
-                                                     parse_gene(paths_on_parent_edge.pop().name)[:2])
+                                        parse_gene(paths_on_parent_edge.pop().name, self.mapping)[:2])
                     if len(cc) == 1:
                         cc = cc.pop()
                     else:

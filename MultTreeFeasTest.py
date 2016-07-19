@@ -10,8 +10,7 @@ def main(tree_file):
     tree.draw_tree()
     initial_feas = tree.is_feasible()
     print "Feasibility: " + "Feasible" if initial_feas else "Infeasible"
-    tree.draw_LEG()
-    raw_input("Press enter to continue...")
+    tree.draw_leg()
     if is_mult:
         print "Binarizing multifurcating tree..."
         tree.binarize()
@@ -25,7 +24,7 @@ def main(tree_file):
                 print "Something went wrong!"
                 print "The tree is now " + "infeasible" if initial_feas else "feasible"
             tree.draw_tree()
-            tree.draw_LEG()
+            tree.draw_leg()
     else:
         print "Tree does not need to be binarized"
 
