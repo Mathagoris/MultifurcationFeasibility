@@ -426,8 +426,9 @@ class Tree (object):
 
     def replace_tree(self, node, childTree):
         """Remove node and replace it with the root of childTree"""
+        parent = node.parent
         self.remove_tree(node)
-        self.add_tree(node.parent, childTree)
+        self.add_tree(parent, childTree)
 
     def merge_names(self, tree2):
         """Merge the node names from tree2 into this tree.
