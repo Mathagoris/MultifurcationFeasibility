@@ -7,15 +7,16 @@ def main(tree_file):
     tree = Tree(tree_file)
     is_mult = tree.is_multifurcating()
     print "Tree type: " + "Multifurcating" if is_mult else "Bifurcating"
-    tree.draw_tree()
     initial_feas = tree.is_feasible()
     print "Feasibility: " + "Feasible" if initial_feas else "Infeasible"
+    tree.draw_tree()
     tree.draw_leg()
     if is_mult:
         print "Binarizing multifurcating tree..."
         tree.binarize()
         if tree.is_multifurcating():
             print "Failed to binarize"
+            tree.draw_tree()
         else:
             print "The tree has been binarized"
             if initial_feas == tree.is_feasible():

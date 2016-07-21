@@ -169,7 +169,10 @@ class Tree(object):
         connecting_tree = treelib.Tree()
         connecting_tree.make_root(name=node.name)
         self.connect(partition, connecting_tree, connecting_tree.root)
-        self.tree.replace_tree(node, connecting_tree)
+        if node.parent is None:
+            self.tree = connecting_tree
+        else:
+            self.tree.replace_tree(node, connecting_tree)
 
     def connect(self, partition, connecting_tree, node):
         if len(partition) == 1:
