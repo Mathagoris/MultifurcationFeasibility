@@ -30,14 +30,19 @@ def parse_gene(gene, mapping='sli_'):
 
 class Tree(object):
     def __init__(self, tree_file, mapping='sli_'):
-        self.tree = treelib.read_newick(tree_file)
+        # add a handle to the tree because the algorithm breaks when theres a
+        # multifurcation at the root
+        self.tree = treelib.Tree()
+        self.tree.make_root()
+        self.tree.add_tree(self.tree.root, treelib.read_newick(tree_file))
         self.labeled = False
         self.mapping = mapping
         self.leg = self.create_leg()
 
-    # Assumes there is not a node with 1 child
+    # Return the multifurcation status of the tree without the handle
+    # Also assumes there is not a node with 1 child
     def is_multifurcating(self):
-        return not treelib.is_binary(self.tree)
+        return not treelib.is_binary(treelib.subtree(self.tree, self.tree.root.children[0]))
 
     def draw_tree(self):
         treelib.draw_tree(self.tree)
@@ -169,10 +174,7 @@ class Tree(object):
         connecting_tree = treelib.Tree()
         connecting_tree.make_root(name=node.name)
         self.connect(partition, connecting_tree, connecting_tree.root)
-        if node.parent is None:
-            self.tree = connecting_tree
-        else:
-            self.tree.replace_tree(node, connecting_tree)
+        self.tree.replace_tree(node, connecting_tree)
 
     def connect(self, partition, connecting_tree, node):
         if len(partition) == 1:
